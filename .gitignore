@@ -1,0 +1,35 @@
+# R / RStudio
+.Rproj.user/
+.Rhistory
+.Rapp.history
+.RData
+.RDataTmp*
+.Ruserdata
+.Renviron
+.httr-oauth
+
+# knitr / R Markdown
+*_cache/
+*.utf8.md
+*.knit.md
+
+# Data and docs live outside the repo (both the folder and a symlink form)
+data/
+data
+docs/
+docs
+temp_data/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Tool folders
+.claude
+.claudeignore
+.positai
+
+# Misc
+lib/
+rosm.cache/
+rsconnect/
