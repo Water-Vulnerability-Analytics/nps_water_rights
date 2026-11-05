@@ -1,0 +1,116 @@
+#' this function calculates aquifer volume for a given depth to water (dtw) 
+#' assuming the aquifer takes the form of a triangular shaped prism, i.e., 
+#' an alluvial or valley aquifer. 
+#' Inputs:
+#' @param dtw_ft The depth to groundwater in feet
+#' @param aquifer_extent sf_shapefile of the aquifer extent when full 
+#' @param full_thickness_ft Thickness of the deepest part of the aquifer
+#' @param well_depth The default is to assume the well penetrates the aquifer,
+#' i.e., well_depth == full_thickness_ft. However, if the well is less than
+#' fully penetrating, the total depth can be added here.
+#' @param valley_wall_elev Elevation change between the valley wall and location
+#'                          of wells which DTW is measured from.
+#' @param theta_deg The angle between the aquifer ground surface and the plung-
+#' ing aquifer sides  
+#' @param sy specific yield of the aquifer
+#' 
+#' Returns:
+#' @param water_volume The volume of water in the aquifer in cubic feet
+
+aquifer_volume <- function(dtw_ft,
+                           aquifer_extent,
+                           full_thickness_ft,
+                           well_depth,
+                           valley_wall_elev,
+                           theta_deg,
+                           sy) {
+  
+  # Test inputs
+  #aquifer_extent <- marine
+  #full_thickness_ft <- 60 # ft
+  #theta_deg <- 10 # degrees
+  #dtw_ft <- spei_historical_gw$static_ft[1] # gw depth
+  #sy <- .2 # unitless
+  # well_depth <- 30 #ft approx depth of screened interval
+  #valley_wall_elev <- 30 #ft from DEM
+  
+  suppressMessages(
+    suppressWarnings(sf_use_s2(FALSE)
+                     )
+    )
+  
+  if(is.na(dtw_ft)) {
+    return(NA)
+  } else {
+    
+    dtw_ft <- abs(dtw_ft) # often dtw is negative by convention even though
+                          # it should be positive. Check this if applied
+                          # anywhere other than BRCA
+    
+    # The valley surface slopes down (perpendicular to the EC drainage). 
+    # Here, I assign the elevation change between the alluvium margin and 
+    # the alluvium valley center (measured from google earth). It was 20-30
+    # feet in this case, but could be changed.
+    #valley_wall_elev <- 30
+    
+    # Calculate buffer distance for aquifer surface -- as the groundwater table
+    # deepens, the effective "area" of the aquifer shrinks. This uses the approx.
+    # valley angle reported by Marine (1962) to calculate the effective decrease
+    # in aquifer width for a change in groundwater depth.
+    buffer_length <- (dtw_ft + valley_wall_elev)/tan(theta_deg*pi/180) / 366002.44 # in decimal degrees
+    
+    # Use that buffer distance to remove buffer distance from the original
+    # aquifer extent.
+    new_aquifer_extent <- 
+      suppressMessages(
+        suppressWarnings(
+          st_buffer(aquifer_extent, 
+                    -buffer_length))) # ft to lat/long
+    
+    # Calculate the area of the new aquifer extent in ft2
+    new_aquifer_area <- 
+     st_area(new_aquifer_extent) %>% 
+      set_units("ft^2") %>%
+      as.numeric()
+    
+    # Calculate the total "solid" volume of the new aquifer assuming a 
+    # triangular prism.
+    new_aquifer_volume <- 
+      0.5 * new_aquifer_area * (full_thickness_ft - valley_wall_elev - dtw_ft)
+    
+    # IF well doesn't penetrate aquifer, calculate triangular prism from well depth
+    if (well_depth < (full_thickness_ft - valley_wall_elev)) {
+      buffer_length_2 <- (well_depth + valley_wall_elev)/tan(theta_deg*pi/180)
+      new_aquifer_extent2 <-
+        suppressMessages(
+          suppressWarnings(
+            st_buffer(aquifer_extent,
+                      buffer_length2/-366002.44)))
+      new_aquifer_area2 <- as.numeric(st_area(new_aquifer_extent2)) * 10.764
+      unavailable_volume <-
+        0.5 * new_aquifer_area * (full_thickness_ft - valley_wall_elev - well_depth)
+
+      new_aquifer_volume <- new_aquifer_volume - unavailable_volume 
+    }
+    
+    # Calculate the water volume in the aquifer assuming a given specific yield.
+    water_volume <- 
+      new_aquifer_volume * sy 
+    
+    
+    suppressMessages(
+      suppressWarnings(sf_use_s2(TRUE)
+      )
+    )
+    
+    
+    return(water_volume)
+    
+  }
+}
+
+#test <- well_data %>%
+#  dplyr::ungroup() %>%
+#  dplyr::filter(well == "Well 1") %>%
+#  dplyr::mutate(aq_volume_ft3 = 
+#                  map_dbl(static_ft_c, ~aquifer_volume(dtw_ft = .)))

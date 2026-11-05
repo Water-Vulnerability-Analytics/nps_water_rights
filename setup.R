@@ -1,7 +1,4 @@
 # setup script for processing functions
-# Copied from Water-Vulnerability-Analytics/nps_water_vulnerability.
-# src/ is a symlink to ../nps_water_vulnerability/src, so that repo must be
-# cloned next to this one.
 
 #Install (if necessary) and load all required packages ----------------
 
@@ -118,8 +115,7 @@ library(rnoaa)
 # source all functions --------------------------
 
 if (!dir.exists("src")) {
-  stop("src/ not found. It links to ../nps_water_vulnerability/src, so clone ",
-       "Water-Vulnerability-Analytics/nps_water_vulnerability next to this repo.")
+  stop("src/ not found. Run this script from the nps_water_rights project root.")
 }
 
 purrr::map(list.files(

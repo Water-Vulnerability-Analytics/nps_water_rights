@@ -1,0 +1,131 @@
+#' Import or download daily WBM rasters for an AOI and summarize to mean daily 
+#' values in a dataframe.
+#' 
+#' This function uses the get_wbm_grids() function to download or import 
+#' gridded WBM rasters for an AOI. Each daily raster is then summarized using
+#' the daily mean, to return a timeseries of daily mean WBM variables for the
+#' AOI. 
+#' 
+#' @param park The 4 digit national park code(s) for parks of interest
+#' @param aoi An sf object to use as the crop extent
+#' @param aoi_name A character string used to name the file, often a description of the AOI pulled
+#' @param gcm A character vector containing selected GCMs for which to download future WBM
+#' @param download A TRUE/FALSE
+#' @param aoi_average TRUE/FALSE whether to return a single daily average value for the entire aoi
+#' @param path home path in which to create subfolder
+#' 
+#' @return A data.frame containing daily timeseries of the spatial mean for 
+#'          each water balance variable formatted like the 
+#'          get_centroid_wbm_data output.
+
+get_wbm_aoi <- function(park,
+                        aoi,
+                        aoi_name,
+                        gcm = select_cfs$GCM,
+                        download = FALSE,
+                        aoi_average = FALSE,
+                        path = "data/park/") {
+  
+  if (download == TRUE) {
+    print("Downloading gridded WBM. This may take several minutes to hours...\n\n")
+    
+    furrr::future_walk(
+      c(
+        "soil_water",
+        "runoff",
+        "rain",
+        "accumswe",
+        "PET",
+        "Deficit",
+        "AET"
+      ),
+      ~ get_wbm_grids(
+        park = park,
+        aoi_name = aoi_name,
+        aoi = aoi,
+        wb_var = .x,
+        macas = gcms,
+        path = path
+      )
+    )
+    
+    print("Download complete!\n\n")
+  }
+  
+  # set up directory with wbm rasters
+  wbm_aoi_dir <- paste0(path,park,"/wbm_daily_rasters/")
+  
+  # create function to clean and convert wbm rasters to data frame
+  rast_read <- function(rast_list) {
+    
+    terra::rast(rast_list) %>%
+      terra::as.data.frame(xy = TRUE) %>%
+      # convert to data.table for speed
+      data.table() %>% 
+      # remove column names that have NA for the data
+      dplyr::select(-contains("_NA")) %>%
+      pivot_longer(-(x:y), names_to = "var", values_to = "val") %>%
+      # Add historic to name
+      dplyr::mutate(var =
+                      if_else(
+                        grepl(
+                          '^accumswe|^runoff|^rain|^PET|^AET|^soil_water|^Deficit',
+                          var
+                        ),
+                        paste0("gridmet.historical_", var),
+                        var
+                      ),
+                    val = val / (25.4 * 10)) %>% # 10 = conversion factor, 25.4 = mm to in
+      dplyr::mutate(var = gsub("soil_water", "soilwater", var)) %>%
+      separate(var, 
+               into = c("gcm", "wbm_var", "date"), 
+               sep = "_") %>%
+      dplyr::mutate(wbm_var = 
+                      str_replace_all(
+                        wbm_var, 
+                        c("runoff" = "runoff_in", 
+                          "rain" = "rain_in", 
+                          "AET" = "aet_in",
+                          "PET" = "pet_in",
+                          "accumswe" = "accumswe_in",
+                          "soilwater" = "soil_water_in",
+                          "Deficit" = "deficit_in")),
+                    date = as.Date(date)) 
+  }
+  
+  # list all aoi wbm rasters
+  wbm_aoi <- list.files(wbm_aoi_dir,full.names = TRUE) %>% 
+            grep(aoi_name, ., value=TRUE) 
+  
+  
+  if (length(wbm_aoi) < 1) {
+    
+    stop("Must download wbm files first! Try function argument: download = TRUE.")
+  
+    }
+    
+  if(aoi_average == TRUE) {
+    
+    wbm_aoi_cleaned <- wbm_aoi %>%
+      furrr::future_map_dfr(~ rast_read(.)) %>%
+      dplyr::select(-c(x,y)) %>%
+      group_by(date, wbm_var, gcm) %>%
+      summarize_all(.funs = 
+                      list(val = ~ mean(val, na.rm = TRUE)), 
+                    .groups = "keep") %>%
+      pivot_wider(names_from = "wbm_var", values_from = "val") %>% 
+      ungroup()
+    
+  } else {
+    
+    wbm_aoi_cleaned <- wbm_aoi %>%
+      furrr::future_map_dfr(~ rast_read(.))
+    
+  }
+  
+  
+    return(wbm_aoi_cleaned)
+    
+    
+  
+}

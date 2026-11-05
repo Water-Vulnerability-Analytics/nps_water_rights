@@ -1,0 +1,103 @@
+#' Inventory of USGS flow data near park units
+#' 
+#' This function imports an inventory of available flow data from the USGS National Water Information System (https://waterdata.usgs.gov/nwis)
+#' 
+#' @param inventory A data table listing available data (site number, parameter code) from NWIS, often retrieved from `inventoryNWIS()`.
+#' @param startDate Start date for data pull (default=all dates)
+#' @param endDate End date for data pull (default=all dates)
+#' @param path The file path (within the working directory) that all data is saved to
+#'
+#' @return An sf object of USGS gaging stations within given spatial boundary and attributes
+#'
+#' @seealso [listNWIS()]
+#' 
+getNWIS <- function(inventory, path, park, endDate = "", startDate = ""){
+  
+  for(i in length(park)){
+    
+    if(!dir.exists(paste0(getwd(), "/", path,"/", park[i], "/nwis/"))){dir.create(paste0(getwd(), "/", path, "/", park[i], "/nwis/"), showWarnings = FALSE)}
+    
+    dir.create(file.path(getwd(),"/",path,"/",park[i]), showWarnings = FALSE)
+    dir.create(file.path(getwd(),"/",path,"/",park[i],"nwis/"), showWarnings = FALSE)
+    dir.create(file.path(getwd(),"/",path,"/",park[i],"nwis/dv/"), showWarnings = FALSE)
+    dir.create(file.path(getwd(),"/",path,"/",park[i],"nwis/uv/"), showWarnings = FALSE)
+    dir.create(file.path(getwd(),"/",path,"/",park[i],"nwis/qw/"), showWarnings = FALSE)
+    dir.create(file.path(getwd(),"/",path,"/",park[i],"nwis/gwlevels/"), showWarnings = FALSE)
+    dir.create(file.path(getwd(),"/",path,"/",park[i],"nwis/pk/"), showWarnings = FALSE)
+    dir.create(file.path(getwd(),"/",path,"/",park[i],"nwis/ad/"), showWarnings = FALSE)
+    dir.create(file.path(getwd(),"/",path,"/",park[i],"nwis/sv/"), showWarnings = FALSE)
+    dir.create(file.path(getwd(),"/",path,"/",park[i],"nwis/aw/"), showWarnings = FALSE)
+    
+    inventory <- inventory %>%
+      dplyr::filter(!is.na(code)) %>%
+      mutate(combo=paste0(site_no,"-",code)) %>%
+      mutate(data_type_cd = ifelse(data_type_cd == "gw", "gwlevels", data_type_cd))
+    
+    my_function <- function(row) {
+      
+      try(data <- dataRetrieval::readNWISdata(sites = row$site_no, 
+                                              parameterCd = row$code,
+                                              service = row$data_type_cd,
+                                              startDate = row$begin_date, 
+                                              endDate = row$end_date) %>%
+            mutate(across(everything(), as.character))
+          
+          
+          )
+      
+      try(write_csv(data, file = paste0(getwd(), "/", path, "/", park[i], "/nwis/", row$data_type_cd, "/", row$site_no, '_', row$code, '.csv')))
+      
+      print(paste0(row$site_no, ":", row$parameter, " for ", park, " done!"))
+      
+    }
+    
+    inventory %>%
+      st_drop_geometry() %>%
+      purrr::pmap(data.frame) %>% 
+      purrr::walk(~ my_function(row = .))
+    
+  }
+  
+  main_path <- file.path(getwd(), path, park[i])
+  
+  list.dirs(main_path, recursive = TRUE, full.names = TRUE) %>%
+    map(~ if (length(list.files(.x)) == 0) unlink(.x, recursive = TRUE)) %>%
+    invisible()
+  
+}
+
+# codes <- c("dv", "gw", "uv", "pk", "ad", "sv", "aw")
+# 
+# coder <- function(codes){
+#   
+#   code_data <- inventory %>%
+#     dplyr::filter(data_type_cd==codes) %>%
+#     distinct(.,.keep_all=TRUE) %>%
+#     dplyr::filter(!is.na(code))
+# 
+#       list <- unique(code_data$combo)
+# 
+#       nwis_puller <- function(list){
+# 
+#         ind <- dplyr::filter(code_data, combo == list)
+# 
+#         dataRetrieval::readNWISdata(sites=unique(ind$site_no), parameterCd = unique(ind$code),
+#                                     service = codes,
+#                                     startDate=ind$begin_date, endDate=ind$end_date) %>%
+# write_csv(
+#   paste0(getwd(),"/",path,"/",park[i],"/",codes,"/",unique(ind$site_no),'_',unique(ind$code),'.csv'))
+#     
+#     print(paste0(ind$site_name, ":", ind$parameter, " for ", park, " done!"))
+#     
+#   }
+#   
+#   purrr::map(list,
+#              purrr::possibly(nwis_puller, otherwise=1+1))
+#   
+# }
+# 
+# purrr::map(codes,
+#            purrr::possibly(coder, otherwise=1+1))
+
+
+

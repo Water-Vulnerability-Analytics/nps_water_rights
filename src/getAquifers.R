@@ -1,0 +1,58 @@
+#' Import shallowest principal aquifers for park unit(s) of interest. 
+#' 
+#'
+#' 
+#' @param aoi An sf polygon object, often a park boundary (or boundaries) retrieved from `getParkBoundary()`.
+#' @param save Whether to save (TRUE) the resulting shapefile or not (FALSE)
+#' @param path If `save = TRUE`, the file path to save the shapefile
+#' 
+#' @return A shallowest principal aquifer raster masked to the area of interest.
+#' 
+#' @seealso [getParkBoundary()]
+getAquifers <- function(aoi, save = FALSE, path = NULL){
+  
+  call <- "https://water.usgs.gov/GIS/dsdl/aquifers_us.zip"
+  
+  #download boundary 
+  temp1 <- tempfile()
+  download.file(paste0(call), destfile = temp1, method = "curl")
+  temp2 <- tempfile()
+  unzip(temp1, exdir = temp2)
+  
+  #sf::sf_use_s2(FALSE)
+  
+  
+  aquifers <- sf::st_read(dsn = temp2) %>%
+    st_make_valid() %>% 
+    sf::st_transform(4269) %>%
+    sf::st_intersection(.,aoi) %>%
+    .[aoi,]
+  
+  if(save == TRUE){
+    
+    park <- unique(aoi$UNIT_CODE)
+    
+    for (i in 1:length(park)){
+      
+      #create park folder if does not already exist in 'path'
+      if (!dir.exists(paste0(path, park[i]))) {
+        
+        dir.create(paste0(path, park[i]))
+      }
+      
+      # save aquifers shapefile in park folder
+      sf::st_write(filter(aquifers, UNIT_CODE == park[i]), 
+                   paste0(path, "/", park[i], "/", park[i], "_aquifers.shp"),
+                   append = FALSE)
+      
+      
+    }
+    
+    print(paste("Aquifer shapefiles saved to respective folders in:", paste0(getwd(), "/", path)))
+    
+  }
+  
+  return(aquifers)
+  
+}
+
