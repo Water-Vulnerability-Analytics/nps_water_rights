@@ -1,0 +1,28 @@
+#' Import NPS buildings
+#' 
+#' https://public-nps.opendata.arcgis.com/datasets/nps::nps-buildings-web-mercator/explore?location=21.734632%2C-117.659450%2C4.08
+
+getParkingLots <- function(aoi, dist=0){
+  
+  call <- "https://public-nps.opendata.arcgis.com/api/v3/datasets/685e6ac43db44a93915b8622034856e4_2/downloads/data?format=shp&spatialRefId=3857&where=1%3D1"
+  temp1 <- tempfile()
+  download.file(paste0(call), destfile = temp1, method = "curl")
+  temp2 <- tempfile()
+  unzip(temp1, exdir = temp2)
+  
+  buffer <- aoi %>% 
+    sf::st_buffer(dist = dist)
+  
+  parking_lots <- sf::st_read(paste0(temp2, "/NPS__-_Parking_Areas_-_Web_Mercator.shp"), quiet = TRUE) %>%
+    st_make_valid() %>% 
+    sf::st_zm() %>%
+    sf::st_as_sf() %>%
+    sf::st_cast("POLYGON") %>%
+    sf::st_transform(4269) %>%
+    sf::st_join(dplyr::select(buffer, UNIT_CODE)) %>%
+    dplyr::filter(!is.na(UNIT_CODE))
+  
+  return(parking_lots)
+  
+}
+
